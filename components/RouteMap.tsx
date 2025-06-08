@@ -4,108 +4,104 @@ import Colors from '@/utils/colors';
 import { Location } from '@/types';
 
 // Component to be used on native platforms only
-const NativeMap = Platform.select({
-  native: () => {
-    const { default: MapView, Polyline, Marker, PROVIDER_GOOGLE } = require('react-native-maps');
+const NativeMap = Platform.OS !== 'web' ? (() => {
+  const { default: MapView, Polyline, Marker, PROVIDER_GOOGLE } = require('react-native-maps');
+  
+  return ({ 
+    locations, 
+    activityType, 
+    showMarkers = true,
+    height = 250 
+  }) => {
+    if (locations.length === 0) return null;
     
-    return ({ 
-      locations, 
-      activityType, 
-      showMarkers = true,
-      height = 250 
-    }) => {
+    const coords = locations.map(loc => ({
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    }));
+    
+    const getRegion = () => {
       if (locations.length === 0) return null;
       
-      const coords = locations.map(loc => ({
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-      }));
+      // Find the bounding coordinates
+      let minLat = locations[0].latitude;
+      let maxLat = locations[0].latitude;
+      let minLng = locations[0].longitude;
+      let maxLng = locations[0].longitude;
       
-      const getRegion = () => {
-        if (locations.length === 0) return null;
-        
-        // Find the bounding coordinates
-        let minLat = locations[0].latitude;
-        let maxLat = locations[0].latitude;
-        let minLng = locations[0].longitude;
-        let maxLng = locations[0].longitude;
-        
-        locations.forEach(loc => {
-          minLat = Math.min(minLat, loc.latitude);
-          maxLat = Math.max(maxLat, loc.latitude);
-          minLng = Math.min(minLng, loc.longitude);
-          maxLng = Math.max(maxLng, loc.longitude);
-        });
-        
-        // Add some padding
-        const latDelta = (maxLat - minLat) * 1.5 || 0.005;
-        const lngDelta = (maxLng - minLng) * 1.5 || 0.005;
-        
-        return {
-          latitude: (minLat + maxLat) / 2,
-          longitude: (minLng + maxLng) / 2,
-          latitudeDelta: Math.max(latDelta, 0.005),
-          longitudeDelta: Math.max(lngDelta, 0.005),
-        };
+      locations.forEach(loc => {
+        minLat = Math.min(minLat, loc.latitude);
+        maxLat = Math.max(maxLat, loc.latitude);
+        minLng = Math.min(minLng, loc.longitude);
+        maxLng = Math.max(maxLng, loc.longitude);
+      });
+      
+      // Add some padding
+      const latDelta = (maxLat - minLat) * 1.5 || 0.005;
+      const lngDelta = (maxLng - minLng) * 1.5 || 0.005;
+      
+      return {
+        latitude: (minLat + maxLat) / 2,
+        longitude: (minLng + maxLng) / 2,
+        latitudeDelta: Math.max(latDelta, 0.005),
+        longitudeDelta: Math.max(lngDelta, 0.005),
       };
-      
-      const getRouteColor = () => {
-        switch (activityType) {
-          case 'running':
-            return Colors.activity.running.main;
-          case 'cycling':
-            return Colors.activity.cycling.main;
-          case 'walking':
-            return Colors.activity.walking.main;
-          default:
-            return Colors.primary.main;
-        }
-      };
-      
-      const provider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
-      
-      return (
-        <View style={[styles.container, { height }]}>
-          <MapView
-            style={styles.map}
-            initialRegion={getRegion()}
-            provider={provider}
-          >
-            <Polyline
-              coordinates={coords}
-              strokeWidth={4}
-              strokeColor={getRouteColor()}
-            />
-            
-            {showMarkers && locations.length > 0 && (
-              <>
-                <Marker
-                  coordinate={{
-                    latitude: locations[0].latitude,
-                    longitude: locations[0].longitude,
-                  }}
-                  pinColor={Colors.status.success.main}
-                  title="Start"
-                />
-                
-                <Marker
-                  coordinate={{
-                    latitude: locations[locations.length - 1].latitude,
-                    longitude: locations[locations.length - 1].longitude,
-                  }}
-                  pinColor={Colors.status.error.main}
-                  title="Finish"
-                />
-              </>
-            )}
-          </MapView>
-        </View>
-      );
     };
-  },
-  // Return null for web to avoid even importing the component
-  default: () => null,
-})();
+    
+    const getRouteColor = () => {
+      switch (activityType) {
+        case 'running':
+          return Colors.activity.running.main;
+        case 'cycling':
+          return Colors.activity.cycling.main;
+        case 'walking':
+          return Colors.activity.walking.main;
+        default:
+          return Colors.primary.main;
+      }
+    };
+    
+    const provider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+    
+    return (
+      <View style={[styles.container, { height }]}>
+        <MapView
+          style={styles.map}
+          initialRegion={getRegion()}
+          provider={provider}
+        >
+          <Polyline
+            coordinates={coords}
+            strokeWidth={4}
+            strokeColor={getRouteColor()}
+          />
+          
+          {showMarkers && locations.length > 0 && (
+            <>
+              <Marker
+                coordinate={{
+                  latitude: locations[0].latitude,
+                  longitude: locations[0].longitude,
+                }}
+                pinColor={Colors.status.success.main}
+                title="Start"
+              />
+              
+              <Marker
+                coordinate={{
+                  latitude: locations[locations.length - 1].latitude,
+                  longitude: locations[locations.length - 1].longitude,
+                }}
+                pinColor={Colors.status.error.main}
+                title="Finish"
+              />
+            </>
+          )}
+        </MapView>
+      </View>
+    );
+  };
+})() : null;
 
 // Web-specific map component
 const WebMap = ({ 
