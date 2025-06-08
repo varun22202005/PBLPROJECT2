@@ -3,14 +3,12 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActivityType, Location as LocationType } from '@/types';
 import Colors from '@/utils/colors';
-import * as Location from 'expo-location';
-import * as Haptics from 'expo-haptics';
 import { startLocationTracking, stopLocationTracking } from '@/utils/location';
 import { formatDistance, formatDuration, formatPace, calculateDistance, createActivityRecord } from '@/utils/activity';
 import { getUserSettings } from '@/utils/storage';
 import ActivityTypeSelector from '@/components/ActivityTypeSelector';
 import RouteMap from '@/components/RouteMap';
-import { Play, Pause, CircleStop as StopCircle, Clock, Route, Gauge } from 'lucide-react-native';
+import { Play, Pause, CircleStop as StopCircle, Clock, Route, Gauge, MapPin } from 'lucide-react-native';
 
 export default function TrackScreen() {
   const [activityType, setActivityType] = useState<ActivityType>('running');
@@ -26,7 +24,7 @@ export default function TrackScreen() {
   const [distance, setDistance] = useState(0);
   const [isImperial, setIsImperial] = useState(false);
   
-  const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const locationSubscription = useRef<{ remove: () => void } | null>(null);
   const timerInterval = useRef<NodeJS.Timeout | null>(null);
   
   useEffect(() => {
@@ -50,21 +48,54 @@ export default function TrackScreen() {
       }
       
       // Check location permission
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      setLocationPermission(status === 'granted');
-      
-      if (status === 'granted') {
-        // Get initial location
-        const location = await Location.getCurrentPositionAsync({});
-        const newLocation: LocationType = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          altitude: location.coords.altitude,
-          accuracy: location.coords.accuracy,
-          speed: location.coords.speed,
-          timestamp: location.timestamp,
-        };
-        setCurrentLocation(newLocation);
+      if (Platform.OS === 'web') {
+        // For web, check if geolocation is available
+        if (navigator.geolocation) {
+          setLocationPermission(true);
+          // Get initial location
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const newLocation: LocationType = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                altitude: position.coords.altitude,
+                accuracy: position.coords.accuracy,
+                speed: position.coords.speed,
+                timestamp: position.timestamp,
+              };
+              setCurrentLocation(newLocation);
+            },
+            (error) => {
+              console.error('Error getting location:', error);
+              setLocationPermission(false);
+            }
+          );
+        } else {
+          setLocationPermission(false);
+        }
+      } else {
+        // Native location handling would go here
+        try {
+          const Location = require('expo-location');
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          setLocationPermission(status === 'granted');
+          
+          if (status === 'granted') {
+            const location = await Location.getCurrentPositionAsync({});
+            const newLocation: LocationType = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              altitude: location.coords.altitude,
+              accuracy: location.coords.accuracy,
+              speed: location.coords.speed,
+              timestamp: location.timestamp,
+            };
+            setCurrentLocation(newLocation);
+          }
+        } catch (error) {
+          console.error('Error setting up location:', error);
+          setLocationPermission(false);
+        }
       }
     } catch (error) {
       console.error('Error setting up location:', error);
@@ -77,8 +108,14 @@ export default function TrackScreen() {
     if (!locationPermission) return;
     
     try {
+      // Web-compatible feedback
       if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        try {
+          const Haptics = require('expo-haptics');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        } catch (error) {
+          console.log('Haptics not available');
+        }
       }
       
       setIsTracking(true);
@@ -117,8 +154,14 @@ export default function TrackScreen() {
   };
   
   const pauseActivity = () => {
+    // Web-compatible feedback
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      try {
+        const Haptics = require('expo-haptics');
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (error) {
+        console.log('Haptics not available');
+      }
     }
     
     setIsPaused(!isPaused);
@@ -133,8 +176,14 @@ export default function TrackScreen() {
   };
   
   const stopActivity = async () => {
+    // Web-compatible feedback
     if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      try {
+        const Haptics = require('expo-haptics');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.log('Haptics not available');
+      }
     }
     
     // Stop tracking
@@ -207,16 +256,19 @@ export default function TrackScreen() {
   if (!locationPermission) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.permissionTitle}>Location Permission Required</Text>
+        <MapPin size={48} color={Colors.grey[400]} style={styles.permissionIcon} />
+        <Text style={styles.permissionTitle}>Location Access Required</Text>
         <Text style={styles.permissionText}>
-          This app needs location access to track your activities.
-          Please enable location permissions in your device settings.
+          {Platform.OS === 'web' 
+            ? 'This app needs location access to track your activities. Please allow location access when prompted by your browser.'
+            : 'This app needs location access to track your activities. Please enable location permissions in your device settings.'
+          }
         </Text>
         <TouchableOpacity 
           style={styles.permissionButton}
           onPress={checkPermissionAndLoadSettings}
         >
-          <Text style={styles.permissionButtonText}>Check Again</Text>
+          <Text style={styles.permissionButtonText}>Try Again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -242,6 +294,15 @@ export default function TrackScreen() {
               <Play size={32} color={Colors.white} />
               <Text style={styles.startButtonText}>Start Activity</Text>
             </TouchableOpacity>
+            
+            {currentLocation && (
+              <View style={styles.locationInfo}>
+                <MapPin size={16} color={Colors.grey[600]} />
+                <Text style={styles.locationText}>
+                  Location ready • {currentLocation.accuracy ? `±${Math.round(currentLocation.accuracy)}m` : 'GPS active'}
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
           <>
@@ -356,6 +417,21 @@ const styles = StyleSheet.create({
     color: Colors.white,
     marginLeft: 12,
   },
+  locationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+  },
+  locationText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.grey[600],
+    marginLeft: 8,
+  },
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -414,6 +490,9 @@ const styles = StyleSheet.create({
   stopButton: {
     backgroundColor: Colors.status.error.main,
   },
+  permissionIcon: {
+    marginBottom: 16,
+  },
   permissionTitle: {
     fontFamily: 'Inter-Bold',
     fontSize: 20,
@@ -427,6 +506,7 @@ const styles = StyleSheet.create({
     color: Colors.grey[700],
     marginBottom: 24,
     textAlign: 'center',
+    lineHeight: 24,
   },
   permissionButton: {
     backgroundColor: Colors.primary.main,

@@ -1,26 +1,50 @@
-import * as SecureStore from 'expo-secure-store';
 import { ActivityData, UserSettings } from '../types';
 import { Platform } from 'react-native';
 
 const ACTIVITIES_KEY = 'fitness_tracker_activities';
 const USER_SETTINGS_KEY = 'fitness_tracker_user_settings';
 
-// Mock async storage implementation for web
-const webStorage = new Map<string, string>();
+// Web storage implementation using localStorage
+const webStorage = {
+  setItem: (key: string, value: string) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(key, value);
+    }
+  },
+  getItem: (key: string): string | null => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return localStorage.getItem(key);
+    }
+    return null;
+  },
+};
 
 const saveItem = async (key: string, value: string) => {
   if (Platform.OS === 'web') {
-    webStorage.set(key, value);
+    webStorage.setItem(key, value);
     return;
   }
-  await SecureStore.setItemAsync(key, value);
+  // Native implementation would use SecureStore
+  try {
+    const SecureStore = require('expo-secure-store');
+    await SecureStore.setItemAsync(key, value);
+  } catch (error) {
+    console.error('Failed to save item:', error);
+  }
 };
 
 const getItem = async (key: string): Promise<string | null> => {
   if (Platform.OS === 'web') {
-    return webStorage.get(key) || null;
+    return webStorage.getItem(key);
   }
-  return await SecureStore.getItemAsync(key);
+  // Native implementation would use SecureStore
+  try {
+    const SecureStore = require('expo-secure-store');
+    return await SecureStore.getItemAsync(key);
+  } catch (error) {
+    console.error('Failed to get item:', error);
+    return null;
+  }
 };
 
 export const saveActivities = async (activities: ActivityData[]): Promise<void> => {

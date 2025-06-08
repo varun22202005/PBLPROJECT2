@@ -5,7 +5,6 @@ import { UserSettings } from '@/types';
 import { getUserSettings, saveUserSettings, clearActivities } from '@/utils/storage';
 import Colors from '@/utils/colors';
 import { User, Weight, Ruler, ArrowRightLeft, Save, Trash2 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 
 export default function ProfileScreen() {
   const [userSettings, setUserSettings] = useState<UserSettings>({
@@ -42,8 +41,18 @@ export default function ProfileScreen() {
       await saveUserSettings(userSettings);
       setIsEditing(false);
       
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Web-compatible feedback
+      if (Platform.OS === 'web') {
+        // Could add a toast notification here
+        console.log('Settings saved successfully');
+      } else {
+        // Native haptic feedback would go here
+        try {
+          const Haptics = require('expo-haptics');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error) {
+          console.log('Haptics not available');
+        }
       }
     } catch (error) {
       console.error('Error saving user settings:', error);
@@ -58,33 +67,33 @@ export default function ProfileScreen() {
   };
   
   const clearAllData = async () => {
-    if (Platform.OS === 'web') {
-      // For web, use confirm
-      if (confirm('Are you sure you want to delete all activities? This cannot be undone.')) {
-        await clearActivities();
+    const confirmDelete = Platform.OS === 'web' 
+      ? confirm('Are you sure you want to delete all activities? This cannot be undone.')
+      : await new Promise((resolve) => {
+          Alert.alert(
+            'Delete All Activities',
+            'Are you sure you want to delete all activities? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          );
+        });
+
+    if (confirmDelete) {
+      await clearActivities();
+      
+      if (Platform.OS === 'web') {
+        alert('All activities have been deleted.');
+      } else {
+        try {
+          const Haptics = require('expo-haptics');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error) {
+          console.log('Haptics not available');
+        }
         Alert.alert('Success', 'All activities have been deleted.');
       }
-    } else {
-      // For native platforms, use Alert
-      Alert.alert(
-        'Delete All Activities',
-        'Are you sure you want to delete all activities? This cannot be undone.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              await clearActivities();
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert('Success', 'All activities have been deleted.');
-            },
-          },
-        ]
-      );
     }
   };
   
@@ -226,7 +235,8 @@ export default function ProfileScreen() {
         </View>
         
         <View style={styles.footer}>
-          <Text style={styles.versionText}>Fitness Tracker v1.0.0</Text>
+          <Text style={styles.versionText}>Fitness Tracker Web v1.0.0</Text>
+          <Text style={styles.platformText}>Optimized for Web</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -410,5 +420,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: Colors.grey[500],
+  },
+  platformText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.grey[400],
+    marginTop: 4,
   },
 });
